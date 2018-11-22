@@ -1,0 +1,36 @@
+# Auto detect text files and perform LF normalization
+
+* text=auto
+
+*.doc	 diff=astextplain
+*.DOC	 diff=astextplain
+*.docx   diff=astextplain
+*.DOCX   diff=astextplain
+*.dot    diff=astextplain
+*.DOT    diff=astextplain
+*.pdf    diff=astextplain
+*.PDF	 diff=astextplain
+*.rtf	 diff=astextplain
+*.RTF	 diff=astextplain
+
+*.c 		text
+*.cpp		text
+*.h		text
+*.pl		text
+*.py		text
+*.sh		text
+*.txt		text
+*.desktop	text
+*.conf		text
+*.rc		text
+*.spec		text
+*.bat		text
+*.1		text
+*.md		text
+COPYING		text
+Makefile*	text
+README*		text
+
+*.docx		binary
+*.png		binary
+wsjtx		binary
