@@ -16,7 +16,10 @@ Is this possible?  Our initial goal is to conduct an experiment like this:
 
 In this directory you should find:
 
-- Modulator.cpp & Modulator.hpp - Files from WSJT-X which were modified.
+-  Files from WSJT-X which were modified:
+-- Modulator.cpp
+-- Modulator.hpp
+-- mainwindow.cpp
 - wsjtx - 2.0-RC3 version built with two files above for the Raspberry Pi 3.  If you don't want to go thru all the trouble of building your own from source, you can do a normal install of the [.deb package](http://physics.princeton.edu/pulsar/K1JT/wsjtx_2.0.0-rc3_armhf.deb) then replace just this one file in /usr/local/bin.
 - AD9834.cpp & AD9834.h - Interface to the AD9834 DDS chip over the SPI bus.
 - dds.cpp - Converts messages from modified WSJT-X into commands for the DDS chip.

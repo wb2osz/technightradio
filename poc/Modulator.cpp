@@ -3,7 +3,7 @@
 #include <qmath.h>
 #include <QDateTime>
 #include <QDebug>
-#include "mainwindow.h"
+#include "widgets/mainwindow.h" // TODO: G4WJS - break this dependency
 #include "soundout.h"
 #include "commons.h"
 #include <stdio.h>
@@ -50,37 +50,37 @@ Modulator::Modulator (unsigned frameRate, unsigned periodLengthInSeconds,
   , m_j0 {-1}
   , m_toneFrequency0 {1500.0}
 {
-  std::cout << "JWL DEBUG  Modulator::Modulator" << std::endl;
+  std::cout << "JWL DEBUG 12-12-2018  Modulator::Modulator" << std::endl;
   m_tnrFd = -1;
-        char *port = getenv("TNR_PORT");
+  char *port = getenv("TNR_PORT");
 
-        if (port != NULL) {
-          char *host = getenv("TNR_HOST");
-          if (host == NULL) {
-            host = (char*)"localhost";
-          }
+  if (port != NULL) {
+      char *host = getenv("TNR_HOST");
+      if (host == NULL) {
+          host = (char*)"localhost";
+      }
 
 // This should be done once at application start up time.
  
-          struct hostent *hp = gethostbyname(host); 
-          if (hp != NULL)  {
+      struct hostent *hp = gethostbyname(host); 
+      if (hp != NULL)  {
 
-            memset ((char*)(&m_tnrDest), 0, sizeof(m_tnrDest)); 
-            m_tnrDest.sin_family = hp->h_addrtype; 
-            memcpy((void *)(&m_tnrDest.sin_addr), hp->h_addr_list[0], hp->h_length); 
-            m_tnrDest.sin_port = htons(atoi(port)); 
+          memset ((char*)(&m_tnrDest), 0, sizeof(m_tnrDest)); 
+          m_tnrDest.sin_family = hp->h_addrtype; 
+          memcpy((void *)(&m_tnrDest.sin_addr), hp->h_addr_list[0], hp->h_length); 
+          m_tnrDest.sin_port = htons(atoi(port)); 
 
-            m_tnrFd = socket(PF_INET, SOCK_DGRAM, 0);
-            if (m_tnrFd != -1) {
+          m_tnrFd = socket(PF_INET, SOCK_DGRAM, 0);
+          if (m_tnrFd != -1) {
               std::cout << "Tech Night Radio: Sending to " << host << ":" << port << std::endl;
-            } else { 
+          } else { 
               std::cerr << "Tech Night Radio ERROR: could not create dgram socket." << std::endl;
-            }  
-          }
-          else { 
-            std::cerr << "Tech Night Radio ERROR: Could not obtain address of " << host << std::endl;
-          } 
-        }
+          }  
+      }
+      else { 
+          std::cerr << "Tech Night Radio ERROR: Could not obtain address of " << host << std::endl;
+      } 
+  }
 
 }
 
@@ -218,7 +218,6 @@ void Modulator::start (unsigned symbolsLength, double framesPerSymbol,
   if (m_tnrFd != -1) {
 
     if (! m_tuning) {
-      m_tnrSending = true;
       int txdelay = (m_silentFrames * 1000) / m_frameRate;
       if (txdelay < 0) txdelay = 0;
       double baud = 0.25 * m_frameRate / m_nsps;
@@ -229,6 +228,17 @@ void Modulator::start (unsigned symbolsLength, double framesPerSymbol,
       // This happens only when the TNR_PORT environment variable is defined.
 
       std::ostringstream o;
+	 int symcount = m_symbolsLength;
+	 if (baud > 21.43 && baud < 21.63) {
+	  // Hack for ISCAT.  Limit to transmit time period.
+	  // Send whole number of 24 symbol groups.
+	  symcount = (int)(m_period * baud / 24) * 24;
+	 }
+	int repeat = 1;
+	if (baud > 1999 && baud < 2001) {
+	  // Hack for MSK144.  One group is less than 1/10 second so we need to repeat.
+	  repeat = (int)(m_period * baud / symcount);
+	 }
 
       o << "{";
       o << "\"period\":" << m_period << ",";
@@ -236,11 +246,14 @@ void Modulator::start (unsigned symbolsLength, double framesPerSymbol,
       o << "\"freq0\":" << m_frequency << ",";
       o << "\"spacing\":" << m_toneSpacing << ",";
       o << "\"baud\":" << baud << ",";
-      o << "\"symcount\":" << m_symbolsLength << ",";
+	  if (repeat != 1) {
+		o << "\"repeat\":" << repeat << ",";
+	  }
+      o << "\"symcount\":" << symcount << ",";
       o << "\"tones\":[";
-      for (int i = 0; i < (int)m_symbolsLength; i++) {
+      for (int i = 0; i < symcount; i++) {
         o << itone[i];
-        if (i < (int)m_symbolsLength-1) o << ",";
+        if (i < symcount-1) o << ",";
       }
       o << "]}";
 
@@ -295,42 +308,54 @@ void Modulator::tune (bool newState)
   }
 }
 
+
+void Modulator::halttx ( bool quick)
+{
+  (void)quick;
+
+  int t = QDateTime::currentMSecsSinceEpoch() % 86400000;
+  int h = t / 3600000;  t -= h * 3600000;
+  int m = t / 60000; t -= m * 60000;
+  int s = t / 1000; t -= s * 1000;
+
+  printf ("[%02d:%02d:%02d.%03d] Modulator::halttx  quick = %d\n", h, m, s, t, quick);
+
+  if (m_tnrFd != -1) {
+
+		std::string s = "{\"halttx\":1}";
+		if (sendto(m_tnrFd, s.c_str(), s.length(), 0, (struct sockaddr *)(&m_tnrDest), sizeof(m_tnrDest)) < 0) 
+		{ 
+		int e = errno;
+		std::cerr << "Tech Night Radio ERROR:  Failed to send UDP packet, errno " << e << std::endl;
+		} 
+		std::cout << s << std::endl;
+	}
+	stop(false);
+}
+
 void Modulator::stop (bool quick)
 {
   int t = QDateTime::currentMSecsSinceEpoch() % 86400000;
   int h = t / 3600000;  t -= h * 3600000;
   int m = t / 60000; t -= m * 60000;
   int s = t / 1000; t -= s * 1000;
- 
+  printf ("[%02d:%02d:%02d.%03d] Modulator::hakttx  quick = %d\n", h, m, s, t, quick);
+
   // There are at least 3 situations where we can be here:
   //  - Tune button turned off:  quick=1  m_state=2 or 1
   //  - Normal end of transmission:  quick=0  m_state=0 (Idle)
   //  - HaltTx button pressed:  quick=0  m_state=0
 
+  // We want to send halttx JSON message only for interrupting an incomplete
+  // transmission.  We don't want to send it for a normal end.
+  // How can we tell the difference?
+  // I couldn't figure out a good way to distinguish between the two cases.
+  // My solution was to connect the "HaltTx" button to the new halttx method.
+  // It sends the message then calls "stop" as the button did formerly.
 
-// We want to send halttx message only for interrupting an incomplete
-// transmission.  We don't want to send it for a normal end.
-// How can we tell the difference?
-// I couldn't figure out a good way to distinguish between the two cases.
-// Currently I'm thinking that we could save the time when the transmission begins.
-// We would look at the current time and consider it interrupted only if less than
-// 75% of the period has passed.   (JT65 takes 46.81 / 60 = 78% of the time slot.)
 
-  printf ("[%02d:%02d:%02d.%03d] Modulator::stop  quick = %d, m_state = %d, m_tnrSending=%d\n", h, m, s, t, quick, m_state, m_tnrSending);
-  //std::cout << "JWL DEBUG  Modulator::stop  quick = " << quick << std::endl;
-  if (m_tnrFd != -1) {
-    if (m_state == Idle) {
-      std::string s = "{\"halttx\":1}";
-      if (sendto(m_tnrFd, s.c_str(), s.length(), 0, (struct sockaddr *)(&m_tnrDest), sizeof(m_tnrDest)) < 0) 
-      { 
-        int e = errno;
-        std::cerr << "Tech Night Radio ERROR:  Failed to send UDP packet, errno " << e << std::endl;
-      } 
-      std::cout << s << std::endl;
-      m_tnrSending = false;
-    }
-  }
-
+  printf ("[%02d:%02d:%02d.%03d] Modulator::stop  quick = %d, m_state = %d\n", h, m, s, t, quick, m_state);
+  
   m_quickClose = quick;
   close ();
 }
@@ -485,11 +510,7 @@ qint64 Modulator::readData (char * data, qint64 maxSize)
           isym=0;
           if(!m_tuning and m_TRperiod!=3) isym=m_ic / (4.0 * m_nsps);         //Actual
                                                                               //fsample=48000
-	  if (isym == m_symbolsLength - 1) {
-            std::cout << "JWL DEBUG 3  m_tnrSending = false" << std::endl;
-            m_tnrSending = false;
-	  }
-          if(m_bFastMode) isym=isym%m_symbolsLength;
+	      if(m_bFastMode) isym=isym%m_symbolsLength;
           if (isym != m_isym0 || m_frequency != m_frequency0) {
             if(itone[0]>=100) {
               m_toneFrequency0=itone[0];
@@ -530,8 +551,6 @@ qint64 Modulator::readData (char * data, qint64 maxSize)
           ++framesGenerated;
           ++m_ic;
         }
-      std::cout << "JWL DEBUG 2  m_tnrSending = false" << std::endl;
-      m_tnrSending = false;
 
         if (m_amp == 0.0) { // TODO G4WJS: compare double with zero might not be wise
           if (icw[0] == 0) {
@@ -548,8 +567,6 @@ qint64 Modulator::readData (char * data, qint64 maxSize)
       }
       // fall through
       // never gets here.
-      std::cout << "JWL DEBUG 1  m_tnrSending = false" << std::endl;
-      m_tnrSending = false;
 
     case Idle:
       break;

@@ -56,7 +56,7 @@ static double rf_carrier = 0;	// Radio carrier frequency.
 
 
 static void xmit(int period, int txdelay, double freq0, double spacing, 
-			double baud, int symcount, vector<int>& tones);
+			double baud, int repeat, int symcount, vector<int>& tones);
 static uint64_t gettime_us (void);
 
 
@@ -69,10 +69,37 @@ static uint64_t gettime_us (void);
 AD9834 dds;
 
 
-int main () {
+int main (int argc, char *argv[]) {
 
 	struct sockaddr_in sa;
 	int sock;
+	int extra_delay_option = 0;		// FIXME:  Temp hack for RC5.  Should be 0.
+
+// Process command line options.
+// Currently we have only two:
+//
+//	-f 3.573	Set RF frequency in MHz.
+//	-d 100		Additional mSec to delay before transmit.
+//
+//	What is the purpose of this?  Read the documentation. I don't want to repeat here.
+//
+
+	int c;
+	while ((c = getopt(argc, argv, "f:d:")) != EOF) {
+	  switch (c) {
+	    case 'f':
+	      rf_carrier = atof(optarg) * 1e6;
+	      break;
+	    case 'd':
+	      extra_delay_option = atoi(optarg);
+	      break;
+	    default:
+	      cerr << "Invalid command line option." << endl;
+	      exit(1);
+	  }
+	}
+	cout << "RF frequency = " << rf_carrier * 1e-6 << " MHz" << endl; 
+	cout << "Extra delay = " << extra_delay_option << " mSec" << endl;
 
 // Listen for UDP packets.
 
@@ -110,10 +137,23 @@ int main () {
 
 	  wsjtx_msg[len] = '\0';
 
+// There is some concern about the overhead of encoding the 
+// message this way rather then using the most compact binary format.
+// Let's see how long it takes.
+	
+  	  int t = (( gettime_us() / 1000LL) % 84600000LL);
+  	  int h = t / 3600000;  t -= h * 3600000;
+  	  int m = t / 60000; t -= m * 60000;
+  	  int s = t / 1000; t -= s * 1000;
+  	  printf ("[%02d:%02d:%02d.%03d] Received UDP JSON message.\n", h, m, s, t);
+
+	  cout << endl << wsjtx_msg << endl << endl;
+
+
 // Extract values from JSON string.
 // Anything missing is set to zero.
 
-// API documentatin here:    jsoncpp.sourceforge.net/class_json_1_1_value.html
+// API documentation here:    jsoncpp.sourceforge.net/class_json_1_1_value.html
 
 
 	  Json::Reader reader;
@@ -129,6 +169,10 @@ int main () {
 	      double freq0 = obj["freq0"].asDouble();	// Lowest audio tone, Hz.  Typical default 1500.
 	      double spacing = obj["spacing"].asDouble(); // Spacing between tones.  e.g. 6.25 for FT8
 	      double baud = obj["baud"].asDouble();	// Number of symbols sent per second.  e.g.  6.25 for FT8.
+		  int repeat = 1;
+		  if ( ! obj["repeat"].empty()) {
+			  repeat = obj["symcount"].asInt();	// Repeat the group of symbols.
+		  }
 	      int symcount = obj["symcount"].asInt();	// Count of tones to be sent.  Redundant because
 							// it is the same as length of 'tones' vector.
 	      vector<int> tones;			// List of small integers for tones to be sent.
@@ -142,8 +186,33 @@ int main () {
 	      }
   
 // Transmit it.
-  
-	      xmit (period, txdelay, freq0, spacing, baud, symcount, tones);
+  	      txdelay += extra_delay_option;
+	      if (txdelay < 0) txdelay = 0;
+
+// There was some concern about the overhead of using JSON format,
+// complete with variable names, instead of a minimalist approach.
+// Let's see how much overhead it adds.
+
+// Modulator::start prints a timestamp to millisecond resolution.
+// Then it needs to encode the message as text and send by UDP.
+// Here, we print a timestamp when the UDP packet is received and 
+// after the JSON decoding.  What is the elapsed time?
+
+// We typically see Modulator::start beging called at 391 mS after the
+// time slot start.  After encoding into string format, sending to another
+// application over a socket, and decoding from text back into numbers,
+// we are at 392 mS after the time slot start.  One millisecond end to end.
+// Concerns about efficiency are unfounded.  You can do a lot in a 
+// millisecond when your CPU is doing a half billion instructions per second.
+
+
+  	      t = (( gettime_us() / 1000LL) % 84600000LL);
+  	      h = t / 3600000;  t -= h * 3600000;
+  	      m = t / 60000; t -= m * 60000;
+  	      s = t / 1000; t -= s * 1000;
+  	      printf ("[%02d:%02d:%02d.%03d] Finished parsing message.\n", h, m, s, t);
+
+	      xmit (period, txdelay, freq0, spacing, baud, repeat, symcount, tones);
 	    }
 	    else if ( ! obj["tune"].empty()) {
 
@@ -198,7 +267,7 @@ int main () {
 
 
 static void xmit(int period, int txdelay, double freq0, double spacing, 
-				double baud, int symcount, vector<int>& tones) {
+				double baud, int repeat, int symcount, vector<int>& tones) {
 
 	int tone_len_us;	// How long to send each tone in microseconds.
 	uint64_t now;		// Current time, microsecond resolution.
@@ -211,7 +280,7 @@ static void xmit(int period, int txdelay, double freq0, double spacing,
 	if (period != 15 && period != 30 && period != 60) {
 	  cerr << "ERROR!  Transmit period " << period << " is not one of 15, 30, 60." << endl;
 	}
-	if (txdelay < 0 || txdelay > 999) {
+	if (txdelay < 0 || txdelay > 2000) {  // FIXME: back to 999 after RC5
 	  cerr << "ERROR!  Unexpected transmit delay time " << txdelay << " milliseconds." << endl;
 	}
 	if (freq0 < 50 || freq0 > 5000) {
@@ -226,6 +295,10 @@ static void xmit(int period, int txdelay, double freq0, double spacing,
 	}
 	if (spacing < 0.999 * baud  || spacing > 1.001 * baud) {
 	  cerr << "ERROR!  Expected tone spacing " << spacing << " and Baud " << baud << " to be the same."  << endl;
+	}
+	if (repeat < 1 || repeat > 500) {
+	  cerr << "ERROR!  Unexpected repeat factor of " << repeat << " times." << endl;
+	  repeat = 1;
 	}
 	if (symcount != (int)(tones.size())) {
 	  cerr << "ERROR!  Expected list of " << symcount << " symbols but got " << tones.size() << "." << endl;
@@ -259,6 +332,7 @@ static void xmit(int period, int txdelay, double freq0, double spacing,
 
 // Send the tones.
 
+	for (int n = 0; n < repeat; n++) {
 	for (int i = 0; i < (int)(tones.size()); i++) {
 
 	  double f = rf_carrier + freq0 + tones[i] * spacing;;
@@ -297,14 +371,17 @@ static void xmit(int period, int txdelay, double freq0, double spacing,
           dds.adsetfreq(step);
           double actual = step * DDS_MCLK / pow(2,DDS_BITS);
 
-	  cout << "tone start " << now - start << "  f= " << f << "  dds= " << step << "  actual= " << actual << endl;
+	  if (repeat == 1) {
+	    cout << "tone start " << now - start << "  f= " << f << "  dds= " << step << "  actual= " << actual << endl;
+	  }
 
 	  wait_until += tone_len_us;
 	  do {
 	    now = gettime_us();
 	  } while (now < wait_until);
 #endif
-	}
+	}	// 'symcount' times
+	}	// 'repeat' times
 	
 // Turn off the transmitter.
 
@@ -318,6 +395,8 @@ static void xmit(int period, int txdelay, double freq0, double spacing,
 // Get current time with microsecond resolution.
 // We don't care about the time zone because we will only be looking
 // at elapsed time between different values.
+//
+// This is 6 1/2 hours fast.  No clue why.
 
 static uint64_t gettime_us (void) {
 	struct timeval tv;

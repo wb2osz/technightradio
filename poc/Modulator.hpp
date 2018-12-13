@@ -41,6 +41,7 @@ public:
                      double toneSpacing, SoundOutput *, Channel = Mono,
                      bool synchronize = true, bool fastMode = false,
                      double dBSNR = 99., int TRperiod=60);
+  Q_SLOT void halttx (bool quick = false);
   Q_SLOT void stop (bool quick = false);
   Q_SLOT void tune (bool newState = true);
   Q_SLOT void setFrequency (double newFrequency) {m_frequency = newFrequency;}
@@ -75,14 +76,11 @@ private:
   double m_toneSpacing;
   double m_fSpread;
 
-// Next 3 added for the Tech Night Radio project.
+// Next two added for the Tech Night Radio project.
 
   int m_tnrFd = -1;		// To send UDP packet for each transmit.
   struct sockaddr_in m_tnrDest; // Destination for packets.
-  bool m_tnrSending = false;	// Set while transmitting so we can 
-				// distinguish between normal end and
-				// early termination with HaltTx button.
-
+ 
   qint64 m_silentFrames;
   qint32 m_TRperiod;
   qint16 m_ramp;
