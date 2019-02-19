@@ -27,4 +27,8 @@ In this directory you should find:
 - and more ...
 
 
-Spoiler alert!   It was successful but there are still a  few little details to work out before declaring total victory.
+By adding the RF (suppressed) carrier to the frequency generated we go directly to a radio signal without any audio along the way.  This was demonstrated at one of our meetings.
+
+On one side of the room was a Raspberry Pi running a modified WSJT-X and driving a DDS chip.  A short wire served as antenna.
+
+On the other side of the room was a normal SSB transceiver and laptop.  We successfully received the signal being sent by the Raspberry Pi.
