@@ -10,3 +10,10 @@ The first part of this is a Proof of Concept to demonstrate that it is possible.
 
 Later, a more complete radio virtual front panel will be developed.
 
+![](ft8-demo-with-dds.jpg)
+
+In the lower right corner, there is a Raspberry Pi running a modified version of WSJT-X.   it is connected to an AD9834 (direct digital synthesis) eval board acting as a transmitter.  No audio was involved at this end.
+
+![](ad9834-dds-eval-board.jpg)
+
+Across the room, we had the traditional transceiver and laptop for reception.   We were able to demonstrate the feasibility of this approach.  
